@@ -53,12 +53,12 @@ def get_campaigns(url):
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
+
     try:
-        await bot.tree.sync()
-        print("Slash commands sincronizados")
+        synced = await bot.tree.sync()
+        print(f"Comandos sincronizados: {len(synced)}")
     except Exception as e:
         print(e)
-    check_drops.start()
 
 # -------------------- DROP LOOP --------------------
 
