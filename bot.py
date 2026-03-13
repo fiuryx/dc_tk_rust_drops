@@ -170,8 +170,8 @@ async def drops(interaction: discord.Interaction):
 async def forcecheck(interaction: discord.Interaction):
     await interaction.response.send_message("Checking drops...")
 
-    twitch = get_campaigns(TWITCH_URL or "https://twitch.facepunch.com/api/campaigns")
-    kick = get_campaigns(KICK_URL   or "https://kick.facepunch.com/api/campaigns")
+    twitch = get_campaigns("https://twitch.facepunch.com/api/campaigns")
+    kick = get_campaigns("https://kick.facepunch.com/api/campaigns")
 
     await interaction.followup.send(
         f"Twitch campaigns found: {len(twitch)}\nKick campaigns found: {len(kick)}"
