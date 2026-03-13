@@ -339,18 +339,7 @@ Verificar:
 
 * ID del canal correcto
 * permisos del bot en el canal
-
----
-
-# 15. Mejoras futuras
-
-Posibles mejoras:
-
-* detección de **skins nuevas**
-* detección de **streamers nuevos**
-* notificaciones por **rol**
-* panel web
-
+* 
 ---
 
 # Licencia
