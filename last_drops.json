@@ -1,4 +1,10 @@
 {
- "twitch": "",
- "kick": ""
+    "twitch": {
+        "active": false,
+        "hash": ""
+    },
+    "kick": {
+        "active": false,
+        "hash": ""
+    }
 }
