@@ -10,9 +10,11 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 ROLE_ID = int(os.getenv("ROLE_ID", 0))  # opcional para rol de notificación
 
 intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True  # necesario si usamos roles
-bot = commands.Bot(command_prefix="!", intents=intents)
+
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents
+)
 
 DATA_FILE = "last_drops.json"
 SUB_FILE = "subscribers.json"
