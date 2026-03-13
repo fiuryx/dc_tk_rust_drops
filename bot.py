@@ -54,11 +54,8 @@ def get_campaigns(url):
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
 
-    try:
-        synced = await bot.tree.sync()
-        print(f"Comandos sincronizados: {len(synced)}")
-    except Exception as e:
-        print(e)
+    synced = await bot.tree.sync()
+    print(f"Comandos sincronizados: {len(synced)}")
 
 # -------------------- DROP LOOP --------------------
 
