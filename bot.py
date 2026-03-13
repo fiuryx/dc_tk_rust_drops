@@ -8,6 +8,8 @@ import asyncio
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 ROLE_ID = int(os.getenv("ROLE_ID", 0))  # opcional para rol de notificación
+TWITCH_URL = os.getenv("TWITCH_URL")
+KICK_URL   = os.getenv("KICK_URL")
 
 intents = discord.Intents.default()
 
