@@ -165,6 +165,17 @@ async def drops(interaction: discord.Interaction):
 
     embed.add_field(name="Links", value="https://twitch.facepunch.com/\nhttps://kick.facepunch.com/", inline=False)
     await interaction.response.send_message(embed=embed)
+    
+@bot.tree.command(name="forcecheck", description="Force check for new drops")
+async def forcecheck(interaction: discord.Interaction):
+    await interaction.response.send_message("Checking drops...")
+
+    twitch = get_campaigns(TWITCH_URL)
+    kick = get_campaigns(KICK_URL)
+
+    await interaction.followup.send(
+        f"Twitch campaigns found: {len(twitch)}\nKick campaigns found: {len(kick)}"
+    )
 
 # -------------------- START BOT --------------------
 
