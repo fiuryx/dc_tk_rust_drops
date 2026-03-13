@@ -8,8 +8,6 @@ import asyncio
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 ROLE_ID = int(os.getenv("ROLE_ID", 0))  # opcional para rol de notificación
-TWITCH_URL = os.getenv("TWITCH_URL")
-KICK_URL   = os.getenv("KICK_URL")
 
 intents = discord.Intents.default()
 
@@ -172,8 +170,8 @@ async def drops(interaction: discord.Interaction):
 async def forcecheck(interaction: discord.Interaction):
     await interaction.response.send_message("Checking drops...")
 
-    twitch = get_campaigns(TWITCH_URL)
-    kick = get_campaigns(KICK_URL)
+    twitch = get_campaigns(TWITCH_URL or "https://twitch.facepunch.com/api/campaigns")
+    kick = get_campaigns(KICK_URL   or "https://kick.facepunch.com/api/campaigns")
 
     await interaction.followup.send(
         f"Twitch campaigns found: {len(twitch)}\nKick campaigns found: {len(kick)}"
