@@ -1,10 +1,13 @@
 import discord
 from discord.ext import commands, tasks
-import requests
-from bs4 import BeautifulSoup
+import aiohttp
+import asyncio
 import json
 import os
 
+# =========================
+# CONFIG
+# =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
@@ -12,275 +15,156 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DATA_FILE = "last_drops.json"
-SUB_FILE = "subscribers.json"
+first_run = True
 
 
-def load_json(file, default):
-    if os.path.exists(file):
-        with open(file, "r") as f:
+# =========================
+# 💾 DATA
+# =========================
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"twitch_campaign_id": None, "kick_active": None}
+    try:
+        with open(DATA_FILE, "r") as f:
             return json.load(f)
-    return default
+    except:
+        return {"twitch_campaign_id": None, "kick_active": None}
 
 
-def save_json(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f, indent=4)
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
 
-data = load_json(DATA_FILE, {
-    "twitch": {"active": False, "hash": "", "campaign": ""},
-    "kick": {"active": False, "hash": ""}
-})
-
-subs = load_json(SUB_FILE, {"users": []})
-
-
-# ---------------- SCRAPER FACEPUNCH ----------------
-
-def scrape_page(url, inactive_text):
-
-    try:
-
-        r = requests.get(url, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        page_text = soup.get_text()
-
-        active = inactive_text not in page_text
-
-        content = ""
-        for h in soup.find_all(["h2", "h3", "h4"]):
-            content += h.text.strip()
-
-        content_hash = str(hash(content))
-
-        return {
-            "active": active,
-            "hash": content_hash
-        }
-
-    except Exception as e:
-        print(f"[SCRAPER ERROR] {e}")
-        return None
-
-
-def get_twitch_page():
-    return scrape_page(
-        "https://twitch.facepunch.com/",
-        "Drops on Twitch"
-    )
-
-
-def get_kick_page():
-    return scrape_page(
-        "https://kick.facepunch.com/",
-        "Drops on Kick"
-    )
-
-
-# ---------------- TWITCH CAMPAIGN DETECTION ----------------
-
-def check_twitch_campaign():
-
-    try:
-
-        url = "https://gql.twitch.tv/gql"
-
-        headers = {
-            "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko"
-        }
-
-        query = [{
+# =========================
+# 🔎 TWITCH CHECK
+# =========================
+async def check_twitch_campaign():
+    url = "https://gql.twitch.tv/gql"
+    payload = [
+        {
             "operationName": "ViewerDropsDashboard",
+            "variables": {},
             "extensions": {
                 "persistedQuery": {
                     "version": 1,
-                    "sha256Hash": "eecb0f8f36fcd1a89d5dbe5a7ab6b5234f6b31d911cfef95c0d37db114d4e2a1"
+                    "sha256Hash": "9a62a09b27c6c6d6dc0c6f216a73abdb0b3a0c7c0f2c92c38b0f81b190e0b8c9"
                 }
             }
-        }]
-
-        r = requests.post(url, json=query, headers=headers, timeout=10)
-
-        campaigns = r.json()[0]["data"]["currentUser"]["dropCampaignsInProgress"]
-
-        for c in campaigns:
-
-            name = c["name"].lower()
-
-            if "rust" in name:
-
-                return c["id"]
-
-        return None
-
+        }
+    ]
+    headers = {
+        "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
+        "Content-Type": "application/json"
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                data = await resp.json()
+                campaigns = data[0]["data"]["currentUser"]["dropCampaignsInProgress"]
+                for campaign in campaigns:
+                    if "rust" in campaign["name"].lower():
+                        return campaign["id"]
     except Exception as e:
+        print("Error Twitch API:", e)
+    return None
 
-        print("[TWITCH CAMPAIGN ERROR]", e)
 
+# =========================
+# 🔎 KICK CHECK
+# =========================
+async def check_kick_active():
+    url = "https://kick.facepunch.com/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                html = await resp.text()
+                # Si el texto "Drops on Kick" está presente → activo
+                active = "Drops on Kick" in html
+                return active
+    except Exception as e:
+        print("Error Kick:", e)
         return None
 
 
-# ---------------- NOTIFY USERS ----------------
+# =========================
+# 🔁 LOOP PRINCIPAL
+# =========================
+@tasks.loop(minutes=10)
+async def check_drops():
+    global first_run
 
-async def notify_users(embed):
+    data = load_data()
+    old_twitch_id = data.get("twitch_campaign_id")
+    old_kick = data.get("kick_active")
 
-    for user_id in subs["users"]:
+    # ✅ obtener estado actual
+    new_twitch_id = await check_twitch_campaign()
+    new_kick = await check_kick_active()
 
-        try:
+    print(f"Twitch OLD: {old_twitch_id}, NEW: {new_twitch_id}")
+    print(f"Kick OLD: {old_kick}, NEW: {new_kick}")
 
-            user = await bot.fetch_user(user_id)
-            await user.send(embed=embed)
+    # 🛑 primer arranque
+    if first_run:
+        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
+        first_run = False
+        print("Primer arranque → guardando sin notificar")
+        return
 
-        except:
-            pass
+    # 🧠 CANAL DE DISCORD
+    channel = bot.get_channel(CHANNEL_ID)
+    if not channel:
+        print("Canal no encontrado")
+        return
+
+    # =========================
+    # 🔔 Twitch
+    # =========================
+    if old_twitch_id != new_twitch_id:
+        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
+        if new_twitch_id:
+            await channel.send("🟢 Nuevos drops de Rust en Twitch!")
+        else:
+            await channel.send("🔴 Los drops de Rust han terminado en Twitch")
+
+    # =========================
+    # 🔔 Kick
+    # =========================
+    if old_kick != new_kick:
+        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
+        if new_kick:
+            await channel.send("🟢 Nuevos drops de Rust en Kick!")
+        else:
+            await channel.send("🔴 Los drops de Rust han terminado en Kick")
 
 
-# ---------------- BOT READY ----------------
-
+# =========================
+# 🤖 BOT READY
+# =========================
 @bot.event
 async def on_ready():
-
-    print(f"Bot conectado como {bot.user}")
-
-    synced = await bot.tree.sync()
-    print(f"{len(synced)} comandos sincronizados")
-
+    print(f"Conectado como {bot.user}")
+    await asyncio.sleep(30)  # evita falsos positivos al arrancar
     check_drops.start()
 
 
-# ---------------- DROP LOOP ----------------
+# =========================
+# 💬 COMANDO MANUAL
+# =========================
+@bot.command()
+async def drops(ctx):
+    twitch = await check_twitch_campaign()
+    kick = await check_kick_active()
 
-@tasks.loop(minutes=10)
-async def check_drops():
+    msg = ""
+    msg += "🟢 Twitch activo\n" if twitch else "🔴 Twitch inactivo\n"
+    msg += "🟢 Kick activo\n" if kick else "🔴 Kick inactivo"
 
-    global data
-
-    channel = bot.get_channel(CHANNEL_ID)
-
-    twitch_page = get_twitch_page()
-    kick_page = get_kick_page()
-
-    twitch_campaign = check_twitch_campaign()
-
-    # TWITCH DETECTION
-
-    if (
-        twitch_page and
-        (
-            twitch_page["active"] != data["twitch"]["active"]
-            or twitch_page["hash"] != data["twitch"]["hash"]
-            or twitch_campaign != data["twitch"]["campaign"]
-        )
-    ):
-
-        data["twitch"]["active"] = twitch_page["active"]
-        data["twitch"]["hash"] = twitch_page["hash"]
-        data["twitch"]["campaign"] = twitch_campaign
-
-        save_json(DATA_FILE, data)
-
-        embed = discord.Embed(
-            title="🎮 Cambio detectado en Twitch Drops",
-            description="Puede haber nuevos drops activos",
-            color=0x9146FF
-        )
-
-        embed.add_field(
-            name="Ver Drops",
-            value="https://twitch.facepunch.com/",
-            inline=False
-        )
-
-        await channel.send(embed=embed)
-        await notify_users(embed)
-
-    # KICK DETECTION
-
-    if kick_page and (
-        kick_page["active"] != data["kick"]["active"]
-        or kick_page["hash"] != data["kick"]["hash"]
-    ):
-
-        data["kick"] = kick_page
-        save_json(DATA_FILE, data)
-
-        embed = discord.Embed(
-            title="🟢 Cambio detectado en Kick Drops",
-            description="Puede haber nuevos drops activos",
-            color=0x00FF7F
-        )
-
-        embed.add_field(
-            name="Ver Drops",
-            value="https://kick.facepunch.com/",
-            inline=False
-        )
-
-        await channel.send(embed=embed)
-        await notify_users(embed)
+    await ctx.send(msg)
 
 
-# ---------------- COMMANDS ----------------
-
-@bot.tree.command(name="drops", description="Ver estado actual de drops")
-async def drops(interaction: discord.Interaction):
-
-    twitch = get_twitch_page()
-    kick = get_kick_page()
-
-    embed = discord.Embed(
-        title="Estado actual de Rust Drops",
-        color=0xF47A20
-    )
-
-    embed.add_field(
-        name="Twitch",
-        value="🟢 Activo" if twitch and twitch["active"] else "🔴 Inactivo"
-    )
-
-    embed.add_field(
-        name="Kick",
-        value="🟢 Activo" if kick and kick["active"] else "🔴 Inactivo"
-    )
-
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="forcecheck", description="Forzar comprobación de drops")
-async def forcecheck(interaction: discord.Interaction):
-
-    await interaction.response.send_message("🔍 Comprobando drops...")
-    await check_drops()
-
-
-@bot.tree.command(name="notify", description="Suscribirse o cancelar alertas")
-async def notify(interaction: discord.Interaction, mode: str):
-
-    user_id = interaction.user.id
-    mode = mode.lower()
-
-    if mode == "on":
-
-        if user_id not in subs["users"]:
-            subs["users"].append(user_id)
-            save_json(SUB_FILE, subs)
-
-            await interaction.response.send_message(
-                "Te has suscrito a las alertas de drops",
-                ephemeral=True
-            )
-
-    elif mode == "off":
-
-        if user_id in subs["users"]:
-            subs["users"].remove(user_id)
-            save_json(SUB_FILE, subs)
-
-            await interaction.response.send_message(
-                "Te has desuscrito",
-                ephemeral=True
-            )
-
-
+# =========================
+# ▶️ RUN
+# =========================
 bot.run(TOKEN)
