@@ -1,11 +1,10 @@
 import discord
 from discord.ext import tasks
 from discord import app_commands
-import aiohttp
 import asyncio
-import json
 import os
-from bs4 import BeautifulSoup
+import json
+from playwright.async_api import async_playwright
 from aiohttp import web
 
 # =========================
@@ -44,61 +43,54 @@ def save_data(data):
         print("Error guardando:", e)
 
 # =========================
-# 🌐 SESSION
+# 🌐 PLAYWRIGHT OPTIMIZADO
 # =========================
-session = None
+playwright_instance = None
+browser = None
+page = None
 
-async def get_session():
-    global session
-    if session is None or session.closed:
-        timeout = aiohttp.ClientTimeout(total=15)
-        session = aiohttp.ClientSession(timeout=timeout)
-    return session
+async def init_browser():
+    global playwright_instance, browser, page
+    playwright_instance = await async_playwright().start()
+    browser = await playwright_instance.chromium.launch(headless=True)
+    page = await browser.new_page()
 
-# =========================
-# 🔎 TWITCH
-# =========================
+async def close_browser():
+    await page.close()
+    await browser.close()
+    await playwright_instance.stop()
+
+async def check_page(url):
+    """
+    Devuelve True si hay drops activos, False si no
+    """
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            await page.goto(url, timeout=60000)
+            # Esperar a que un elemento de drop real aparezca o el DOM se cargue
+            await page.wait_for_selector("h1.title.hero-title", timeout=5000)
+            content = await page.content()
+
+            # Lógica simple: si "Drops on" está presente en el <h1>, no hay drops activos
+            h1_text = await page.inner_text("h1.title.hero-title")
+            if "Drops on" in h1_text:
+                return False
+            else:
+                return True
+        except Exception as e:
+            print(f"Intento {attempt+1} fallido para {url}: {e}")
+            await asyncio.sleep(2)
+    return None  # fallo total
+
 async def check_twitch():
-    try:
-        session = await get_session()
-        async with session.get("https://twitch.facepunch.com/") as resp:
-            if resp.status != 200:
-                return None
+    return await check_page("https://twitch.facepunch.com/")
 
-            html = await resp.text()
-
-            if "No active drops" in html:
-                return False
-            else:
-                return True
-
-    except Exception as e:
-        print("Error Twitch:", e)
-        return None
-
-# =========================
-# 🔎 KICK
-# =========================
 async def check_kick():
-    try:
-        session = await get_session()
-        async with session.get("https://kick.facepunch.com/") as resp:
-            if resp.status != 200:
-                return None
-
-            html = await resp.text()
-
-            if "No active drops" in html:
-                return False
-            else:
-                return True
-
-    except Exception as e:
-        print("Error Kick:", e)
-        return None
+    return await check_page("https://kick.facepunch.com/")
 
 # =========================
-# 🌐 WEB SERVER (ANTI 502)
+# 🌐 WEB SERVER
 # =========================
 async def handle(request):
     return web.Response(text="OK")
@@ -109,7 +101,6 @@ async def start_webserver():
 
     runner = web.AppRunner(app)
     await runner.setup()
-
     port = int(os.getenv("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
@@ -194,10 +185,14 @@ async def check_drops():
 async def on_ready():
     print(f"Bot listo: {bot.user}")
 
-    await start_webserver()  # 🔥 evita 502
+    await init_browser()        # 🔥 inicia Playwright
+    await start_webserver()     # 🔥 webserver para Railway
     check_drops.start()
 
 # =========================
 # RUN
 # =========================
-bot.run(TOKEN)
+try:
+    bot.run(TOKEN)
+finally:
+    asyncio.run(close_browser())
