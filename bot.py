@@ -9,9 +9,14 @@ import os
 # CONFIG
 # =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
+
+if not TOKEN or CHANNEL_ID == 0:
+    raise ValueError("Faltan variables de entorno")
 
 intents = discord.Intents.default()
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DATA_FILE = "last_drops.json"
@@ -19,12 +24,12 @@ first_run = True
 
 
 # =========================
-# 💾 DATA
+# 💾 DATA SAFE
 # =========================
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"twitch_campaign_id": None, "kick_active": None}
     try:
+        if not os.path.exists(DATA_FILE):
+            return {"twitch_campaign_id": None, "kick_active": None}
         with open(DATA_FILE, "r") as f:
             return json.load(f)
     except:
@@ -32,17 +37,36 @@ def load_data():
 
 
 def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print("Error guardando datos:", e)
 
 
 # =========================
-# 🔎 TWITCH CHECK
+# 🌐 SESSION GLOBAL (PRO)
+# =========================
+session = None
+
+async def get_session():
+    global session
+    if session is None or session.closed:
+        timeout = aiohttp.ClientTimeout(total=15)
+        session = aiohttp.ClientSession(timeout=timeout)
+    return session
+
+
+# =========================
+# 🔎 TWITCH
 # =========================
 async def check_twitch_campaign():
-    url = "https://gql.twitch.tv/gql"
-    payload = [
-        {
+    try:
+        session = await get_session()
+
+        url = "https://gql.twitch.tv/gql"
+
+        payload = [{
             "operationName": "ViewerDropsDashboard",
             "variables": {},
             "extensions": {
@@ -51,120 +75,145 @@ async def check_twitch_campaign():
                     "sha256Hash": "9a62a09b27c6c6d6dc0c6f216a73abdb0b3a0c7c0f2c92c38b0f81b190e0b8c9"
                 }
             }
+        }]
+
+        headers = {
+            "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
+            "Content-Type": "application/json"
         }
-    ]
-    headers = {
-        "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
-        "Content-Type": "application/json"
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers) as resp:
-                data = await resp.json()
-                campaigns = data[0]["data"]["currentUser"]["dropCampaignsInProgress"]
-                for campaign in campaigns:
-                    if "rust" in campaign["name"].lower():
-                        return campaign["id"]
+
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                print("Twitch status:", resp.status)
+                return None
+
+            data = await resp.json()
+
+            campaigns = data[0]["data"]["currentUser"]["dropCampaignsInProgress"]
+
+            for c in campaigns:
+                if "rust" in c["name"].lower():
+                    return c["id"]
+
     except Exception as e:
-        print("Error Twitch API:", e)
+        print("Error Twitch:", e)
+
     return None
 
 
 # =========================
-# 🔎 KICK CHECK
+# 🔎 KICK
 # =========================
 async def check_kick_active():
-    url = "https://kick.facepunch.com/"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                html = await resp.text()
-                # Si el texto "Drops on Kick" está presente → activo
-                active = "Drops on Kick" in html
-                return active
+        session = await get_session()
+        url = "https://kick.facepunch.com/"
+
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                print("Kick status:", resp.status)
+                return None
+
+            html = await resp.text()
+            return "Drops on Kick" in html
+
     except Exception as e:
         print("Error Kick:", e)
         return None
 
 
 # =========================
-# 🔁 LOOP PRINCIPAL
+# 🔁 LOOP PRO
 # =========================
 @tasks.loop(minutes=10)
 async def check_drops():
     global first_run
 
-    data = load_data()
-    old_twitch_id = data.get("twitch_campaign_id")
-    old_kick = data.get("kick_active")
+    try:
+        data = load_data()
 
-    # ✅ obtener estado actual
-    new_twitch_id = await check_twitch_campaign()
-    new_kick = await check_kick_active()
+        old_twitch = data.get("twitch_campaign_id")
+        old_kick = data.get("kick_active")
 
-    print(f"Twitch OLD: {old_twitch_id}, NEW: {new_twitch_id}")
-    print(f"Kick OLD: {old_kick}, NEW: {new_kick}")
+        new_twitch = await check_twitch_campaign()
+        new_kick = await check_kick_active()
 
-    # 🛑 primer arranque
-    if first_run:
-        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
-        first_run = False
-        print("Primer arranque → guardando sin notificar")
-        return
+        print(f"Twitch: {old_twitch} → {new_twitch}")
+        print(f"Kick: {old_kick} → {new_kick}")
 
-    # 🧠 CANAL DE DISCORD
-    channel = bot.get_channel(CHANNEL_ID)
-    if not channel:
-        print("Canal no encontrado")
-        return
+        # ❌ evitar datos corruptos
+        if new_twitch is None and new_kick is None:
+            print("Sin datos válidos → skip")
+            return
 
-    # =========================
-    # 🔔 Twitch
-    # =========================
-    if old_twitch_id != new_twitch_id:
-        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
-        if new_twitch_id:
-            await channel.send("🟢 Nuevos drops de Rust en Twitch!")
-        else:
-            await channel.send("🔴 Los drops de Rust han terminado en Twitch")
+        # 🛑 primer run
+        if first_run:
+            save_data({
+                "twitch_campaign_id": new_twitch,
+                "kick_active": new_kick
+            })
+            first_run = False
+            print("Primer run ignorado")
+            return
 
-    # =========================
-    # 🔔 Kick
-    # =========================
-    if old_kick != new_kick:
-        save_data({"twitch_campaign_id": new_twitch_id, "kick_active": new_kick})
-        if new_kick:
-            await channel.send("🟢 Nuevos drops de Rust en Kick!")
-        else:
-            await channel.send("🔴 Los drops de Rust han terminado en Kick")
+        channel = bot.get_channel(CHANNEL_ID)
+        if not channel:
+            print("Canal no encontrado")
+            return
+
+        # =========================
+        # TWITCH
+        # =========================
+        if new_twitch != old_twitch:
+            if new_twitch:
+                await channel.send("🟢 Drops de Rust activos en Twitch")
+            else:
+                await channel.send("🔴 Drops de Rust terminados en Twitch")
+
+        # =========================
+        # KICK
+        # =========================
+        if new_kick != old_kick:
+            if new_kick:
+                await channel.send("🟢 Drops de Rust activos en Kick")
+            else:
+                await channel.send("🔴 Drops de Rust terminados en Kick")
+
+        save_data({
+            "twitch_campaign_id": new_twitch,
+            "kick_active": new_kick
+        })
+
+    except Exception as e:
+        print("Error loop:", e)
 
 
 # =========================
-# 🤖 BOT READY
+# READY
 # =========================
 @bot.event
 async def on_ready():
-    print(f"Conectado como {bot.user}")
-    await asyncio.sleep(30)  # evita falsos positivos al arrancar
+    print(f"Bot listo: {bot.user}")
+    await asyncio.sleep(20)
     check_drops.start()
 
 
 # =========================
-# 💬 COMANDO MANUAL
+# COMANDO
 # =========================
 @bot.command()
 async def drops(ctx):
     twitch = await check_twitch_campaign()
     kick = await check_kick_active()
 
-    msg = ""
-    msg += "🟢 Twitch activo\n" if twitch else "🔴 Twitch inactivo\n"
-    msg += "🟢 Kick activo\n" if kick else "🔴 Kick inactivo"
+    msg = []
+    msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
+    msg.append("🟢 Kick" if kick else "🔴 Kick")
 
-    await ctx.send(msg)
+    await ctx.send("\n".join(msg))
 
 
 # =========================
-# ▶️ RUN
+# RUN (SIN BUCLES RAROS)
 # =========================
-bot.run(TOKEN)
+bot.run(TOKEN, reconnect=False)
