@@ -66,14 +66,11 @@ async def check_twitch():
                 return None
 
             html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            h1 = soup.find("h1", class_="title hero-title")
 
-            if not h1:
-                return None
-
-            text = h1.get_text(strip=True)
-            return "Drops on Twitch" not in text
+            if "No active drops" in html:
+                return False
+            else:
+                return True
 
     except Exception as e:
         print("Error Twitch:", e)
@@ -82,7 +79,7 @@ async def check_twitch():
 # =========================
 # 🔎 KICK
 # =========================
-async def check_kick():
+async def check_twitch():
     try:
         session = await get_session()
         async with session.get("https://kick.facepunch.com/") as resp:
@@ -90,14 +87,11 @@ async def check_kick():
                 return None
 
             html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            h1 = soup.find("h1", class_="title hero-title")
 
-            if not h1:
-                return None
-
-            text = h1.get_text(strip=True)
-            return "Drops on Kick" not in text
+            if "No active drops" in html:
+                return False
+            else:
+                return True
 
     except Exception as e:
         print("Error Kick:", e)
