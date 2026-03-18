@@ -61,7 +61,6 @@ async def check_twitch():
     try:
         session = await get_session()
         url = "https://twitch.facepunch.com/"
-
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
@@ -78,7 +77,6 @@ async def check_kick():
     try:
         session = await get_session()
         url = "https://kick.facepunch.com/"
-
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
@@ -115,7 +113,7 @@ class MyBot(discord.Client):
             msg.append("🟢 Kick" if kick else "🔴 Kick")
             await interaction.response.send_message("\n".join(msg))
 
-        # 🔹 Sincronizar después de registrar
+        # 🔹 Espera breve y sincroniza
         await asyncio.sleep(2)
         synced = await self.tree.sync(guild=guild)
         print(f"Sync OK: {len(synced)} comandos en la guild")
