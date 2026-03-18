@@ -62,42 +62,16 @@ async def get_session():
 async def check_twitch():
     try:
         session = await get_session()
+        url = "https://twitch.facepunch.com/"
 
-        url = "https://gql.twitch.tv/gql"
-        payload = [{
-            "operationName": "ViewerDropsDashboard",
-            "variables": {},
-            "extensions": {
-                "persistedQuery": {
-                    "version": 1,
-                    "sha256Hash": "9a62a09b27c6c6d6dc0c6f216a73abdb0b3a0c7c0f2c92c38b0f81b190e0b8c9"
-                }
-            }
-        }]
-
-        headers = {
-            "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
-            "Content-Type": "application/json"
-        }
-
-        async with session.post(url, json=payload, headers=headers) as resp:
+        async with session.get(url) as resp:
             if resp.status != 200:
                 return None
 
-            data = await resp.json()
+            html = await resp.text()
 
-            if not data or "data" not in data[0]:
-                return None
-
-            user = data[0]["data"].get("currentUser")
-            if not user:
-                return None
-
-            campaigns = user.get("dropCampaignsInProgress", [])
-
-            for c in campaigns:
-                if "rust" in c.get("name", "").lower():
-                    return c.get("id")
+            # Si NO aparece "No active drops" → hay drops
+            return "No active drops" not in html
 
     except Exception as e:
         print("Error Twitch:", e)
@@ -138,7 +112,7 @@ class MyBot(discord.Client):
         guild = discord.Object(id=GUILD_ID)
 
         # registrar comando
-        self.tree.add_command(drops)
+        self.tree.add_command(drops, guild=discord.Object(id=GUILD_ID))
 
         synced = await self.tree.sync(guild=guild)
         print(f"Sync OK: {len(synced)} comandos")
