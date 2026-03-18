@@ -79,7 +79,7 @@ async def check_twitch():
 # =========================
 # 🔎 KICK
 # =========================
-async def check_twitch():
+async def check_kick():
     try:
         session = await get_session()
         async with session.get("https://kick.facepunch.com/") as resp:
