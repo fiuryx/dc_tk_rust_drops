@@ -1,4 +1,4 @@
-beautifulsoup4>=4.12.2
-lxml>=4.9.3
-aiohttp>=3.8.0
-discord.py>=2.7.0
+discord.py
+aiohttp
+beautifulsoup4
+lxml

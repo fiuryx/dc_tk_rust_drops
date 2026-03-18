@@ -5,7 +5,8 @@ import aiohttp
 import asyncio
 import json
 import os
-from bs4 import BeautifulSoup  # pip install beautifulsoup4
+from bs4 import BeautifulSoup
+from aiohttp import web
 
 # =========================
 # CONFIG
@@ -60,17 +61,20 @@ async def get_session():
 async def check_twitch():
     try:
         session = await get_session()
-        url = "https://twitch.facepunch.com/"
-        async with session.get(url) as resp:
+        async with session.get("https://twitch.facepunch.com/") as resp:
             if resp.status != 200:
                 return None
+
             html = await resp.text()
             soup = BeautifulSoup(html, "html.parser")
             h1 = soup.find("h1", class_="title hero-title")
+
             if not h1:
                 return None
+
             text = h1.get_text(strip=True)
             return "Drops on Twitch" not in text
+
     except Exception as e:
         print("Error Twitch:", e)
         return None
@@ -81,51 +85,74 @@ async def check_twitch():
 async def check_kick():
     try:
         session = await get_session()
-        url = "https://kick.facepunch.com/"
-        async with session.get(url) as resp:
+        async with session.get("https://kick.facepunch.com/") as resp:
             if resp.status != 200:
                 return None
+
             html = await resp.text()
             soup = BeautifulSoup(html, "html.parser")
             h1 = soup.find("h1", class_="title hero-title")
+
             if not h1:
                 return None
+
             text = h1.get_text(strip=True)
             return "Drops on Kick" not in text
+
     except Exception as e:
         print("Error Kick:", e)
         return None
 
 # =========================
-# 🤖 BOT CLASE
+# 🌐 WEB SERVER (ANTI 502)
+# =========================
+async def handle(request):
+    return web.Response(text="OK")
+
+async def start_webserver():
+    app = web.Application()
+    app.router.add_get("/", handle)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+# =========================
+# 🤖 BOT
 # =========================
 class MyBot(discord.Client):
     def __init__(self):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
-   async def setup_hook(self):
-    # Borrar todos los comandos globales y de guild (si los hubiera)
-    commands = await self.tree.fetch_commands()
-    for cmd in commands:
-        await self.tree.delete_command(cmd.id)
-    print(f"Se borraron {len(commands)} comandos globales antiguos")
+    async def setup_hook(self):
+        @self.tree.command(name="drops", description="Ver estado de drops")
+        async def drops_command(interaction: discord.Interaction):
+            twitch = await check_twitch()
+            kick = await check_kick()
 
-    # Registrar comando global /drops
-    @self.tree.command(name="drops", description="Ver estado de drops")
-    async def drops_command(interaction: discord.Interaction):
-        twitch = await check_twitch()
-        kick = await check_kick()
-        msg = []
-        msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
-        msg.append("🟢 Kick" if kick else "🔴 Kick")
-        await interaction.response.send_message("\n".join(msg))
+            msg = []
+            msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
+            msg.append("🟢 Kick" if kick else "🔴 Kick")
 
-    # Sincronizar globalmente
-    await self.tree.sync()
-    print("Comando /drops global sincronizado")
+            await interaction.response.send_message("\n".join(msg))
+
+        await self.tree.sync()
+        print("Comando /drops sincronizado")
 
 bot = MyBot()
+
+# =========================
+# ❌ IGNORAR ERROR DISCORD
+# =========================
+@bot.tree.error
+async def on_app_command_error(interaction, error):
+    if isinstance(error, discord.app_commands.errors.CommandNotFound):
+        return
+    print(f"Error comando: {error}")
 
 # =========================
 # 🔁 LOOP
@@ -155,16 +182,14 @@ async def check_drops():
         return
 
     if new_twitch != old_twitch:
-        if new_twitch:
-            await channel.send("🟢 Drops activos en Twitch")
-        else:
-            await channel.send("🔴 Drops terminados en Twitch")
+        await channel.send(
+            "🟢 Drops activos en Twitch" if new_twitch else "🔴 Drops terminados en Twitch"
+        )
 
     if new_kick != old_kick:
-        if new_kick:
-            await channel.send("🟢 Drops activos en Kick")
-        else:
-            await channel.send("🔴 Drops terminados en Kick")
+        await channel.send(
+            "🟢 Drops activos en Kick" if new_kick else "🔴 Drops terminados en Kick"
+        )
 
     save_data({"twitch": new_twitch, "kick": new_kick})
 
@@ -174,6 +199,8 @@ async def check_drops():
 @bot.event
 async def on_ready():
     print(f"Bot listo: {bot.user}")
+
+    await start_webserver()  # 🔥 evita 502
     check_drops.start()
 
 # =========================
