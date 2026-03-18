@@ -5,6 +5,7 @@ import aiohttp
 import asyncio
 import json
 import os
+from bs4 import BeautifulSoup  # pip install beautifulsoup4
 
 # =========================
 # CONFIG
@@ -64,10 +65,15 @@ async def check_twitch():
             if resp.status != 200:
                 return None
             html = await resp.text()
-            return "No active drops" not in html
+            soup = BeautifulSoup(html, "html.parser")
+            h1 = soup.find("h1", class_="title hero-title")
+            if not h1:
+                return None
+            text = h1.get_text(strip=True)
+            return "Drops on Twitch" not in text
     except Exception as e:
         print("Error Twitch:", e)
-    return None
+        return None
 
 # =========================
 # 🔎 KICK
@@ -80,10 +86,15 @@ async def check_kick():
             if resp.status != 200:
                 return None
             html = await resp.text()
-            return "Drops on Kick" in html
+            soup = BeautifulSoup(html, "html.parser")
+            h1 = soup.find("h1", class_="title hero-title")
+            if not h1:
+                return None
+            text = h1.get_text(strip=True)
+            return "Drops on Kick" not in text
     except Exception as e:
         print("Error Kick:", e)
-    return None
+        return None
 
 # =========================
 # 🤖 BOT CLASE
