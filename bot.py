@@ -60,6 +60,7 @@ async def get_session():
 # =========================
 # 🔎 TWITCH
 # =========================
+
 async def check_twitch_campaign():
     try:
         session = await get_session()
@@ -89,17 +90,25 @@ async def check_twitch_campaign():
 
             data = await resp.json()
 
-            campaigns = data[0]["data"]["currentUser"]["dropCampaignsInProgress"]
+            # 🛡️ VALIDACIÓN SEGURA
+            if not data or "data" not in data[0]:
+                print("Respuesta inesperada Twitch:", data)
+                return None
+
+            user = data[0]["data"].get("currentUser")
+            if not user:
+                return None
+
+            campaigns = user.get("dropCampaignsInProgress", [])
 
             for c in campaigns:
-                if "rust" in c["name"].lower():
-                    return c["id"]
+                if "rust" in c.get("name", "").lower():
+                    return c.get("id")
 
     except Exception as e:
-        print("Error Twitch:", e)
+        print("Error Twitch API:", e)
 
     return None
-
 
 # =========================
 # 🔎 KICK
