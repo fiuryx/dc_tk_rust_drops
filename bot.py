@@ -99,12 +99,14 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
 
-        # Registrar comando dentro del hook
-        @self.tree.command(
-            name="drops",
-            description="Ver estado de drops",
-            guild=guild
-        )
+        # 🔹 Borrar comandos antiguos en la guild
+        commands = await self.tree.fetch_commands(guild=guild)
+        for cmd in commands:
+            await self.tree.delete_command(cmd.id, guild=guild)
+        print(f"Se borraron {len(commands)} comandos antiguos en la guild")
+
+        # 🔹 Registrar comando /drops
+        @self.tree.command(name="drops", description="Ver estado de drops", guild=guild)
         async def drops_command(interaction: discord.Interaction):
             twitch = await check_twitch()
             kick = await check_kick()
@@ -113,10 +115,10 @@ class MyBot(discord.Client):
             msg.append("🟢 Kick" if kick else "🔴 Kick")
             await interaction.response.send_message("\n".join(msg))
 
-        # 🔹 Espera breve antes de sincronizar para evitar que Discord envíe interacciones antes
+        # 🔹 Sincronizar después de registrar
         await asyncio.sleep(2)
         synced = await self.tree.sync(guild=guild)
-        print(f"Sync OK: {len(synced)} comandos")
+        print(f"Sync OK: {len(synced)} comandos en la guild")
 
 bot = MyBot()
 
