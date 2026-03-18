@@ -19,9 +19,6 @@ if not TOKEN or CHANNEL_ID == 0 or GUILD_ID == 0:
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)
-
 DATA_FILE = "last_drops.json"
 first_run = True
 
@@ -130,6 +127,42 @@ async def check_kick():
 
 
 # =========================
+# 🤖 BOT CLASE (CLAVE)
+# =========================
+class MyBot(discord.Client):
+    def __init__(self):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self):
+        guild = discord.Object(id=GUILD_ID)
+
+        # registrar comando
+        self.tree.add_command(drops)
+
+        synced = await self.tree.sync(guild=guild)
+        print(f"Sync OK: {len(synced)} comandos")
+
+
+bot = MyBot()
+
+
+# =========================
+# 🔥 SLASH COMMAND
+# =========================
+@app_commands.command(name="drops", description="Ver estado de drops")
+async def drops(interaction: discord.Interaction):
+    twitch = await check_twitch()
+    kick = await check_kick()
+
+    msg = []
+    msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
+    msg.append("🟢 Kick" if kick else "🔴 Kick")
+
+    await interaction.response.send_message("\n".join(msg))
+
+
+# =========================
 # 🔁 LOOP
 # =========================
 @tasks.loop(minutes=10)
@@ -156,14 +189,12 @@ async def check_drops():
     if not channel:
         return
 
-    # Twitch
     if new_twitch != old_twitch:
         if new_twitch:
             await channel.send("🟢 Drops activos en Twitch")
         else:
             await channel.send("🔴 Drops terminados en Twitch")
 
-    # Kick
     if new_kick != old_kick:
         if new_kick:
             await channel.send("🟢 Drops activos en Kick")
@@ -174,35 +205,11 @@ async def check_drops():
 
 
 # =========================
-# 🔥 SLASH COMMAND
-# =========================
-@tree.command(name="drops", description="Ver estado de drops")
-async def drops(interaction: discord.Interaction):
-    twitch = await check_twitch()
-    kick = await check_kick()
-
-    msg = []
-    msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
-    msg.append("🟢 Kick" if kick else "🔴 Kick")
-
-    await interaction.response.send_message("\n".join(msg))
-
-
-# =========================
 # READY
 # =========================
 @bot.event
 async def on_ready():
     print(f"Bot listo: {bot.user}")
-
-    guild = discord.Object(id=GUILD_ID)
-
-    tree.clear_commands(guild=guild)
-    tree.copy_global_to(guild=guild)
-
-    synced = await tree.sync(guild=guild)
-    print(f"Sync OK: {len(synced)} comandos")
-
     await asyncio.sleep(20)
     check_drops.start()
 
