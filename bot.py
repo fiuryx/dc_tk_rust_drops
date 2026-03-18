@@ -89,7 +89,7 @@ async def check_kick():
     return None
 
 # =========================
-# 🤖 BOT CLASE (CLAVE)
+# 🤖 BOT CLASE
 # =========================
 class MyBot(discord.Client):
     def __init__(self):
@@ -99,7 +99,7 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
 
-        # Registrar comando slash directamente
+        # Registrar comando dentro del hook
         @self.tree.command(
             name="drops",
             description="Ver estado de drops",
@@ -113,7 +113,8 @@ class MyBot(discord.Client):
             msg.append("🟢 Kick" if kick else "🔴 Kick")
             await interaction.response.send_message("\n".join(msg))
 
-        # Sincronizar comandos en la guild
+        # 🔹 Espera breve antes de sincronizar para evitar que Discord envíe interacciones antes
+        await asyncio.sleep(2)
         synced = await self.tree.sync(guild=guild)
         print(f"Sync OK: {len(synced)} comandos")
 
@@ -166,7 +167,6 @@ async def check_drops():
 @bot.event
 async def on_ready():
     print(f"Bot listo: {bot.user}")
-    await asyncio.sleep(5)
     check_drops.start()
 
 # =========================
