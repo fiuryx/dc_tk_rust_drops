@@ -104,20 +104,26 @@ class MyBot(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
-    async def setup_hook(self):
-        # 🔹 Registrar comando global
-        @self.tree.command(name="drops", description="Ver estado de drops")
-        async def drops_command(interaction: discord.Interaction):
-            twitch = await check_twitch()
-            kick = await check_kick()
-            msg = []
-            msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
-            msg.append("🟢 Kick" if kick else "🔴 Kick")
-            await interaction.response.send_message("\n".join(msg))
+   async def setup_hook(self):
+    # Borrar todos los comandos globales y de guild (si los hubiera)
+    commands = await self.tree.fetch_commands()
+    for cmd in commands:
+        await self.tree.delete_command(cmd.id)
+    print(f"Se borraron {len(commands)} comandos globales antiguos")
 
-        # 🔹 Sincronizar globalmente
-        await self.tree.sync()
-        print("Comando /drops global sincronizado")
+    # Registrar comando global /drops
+    @self.tree.command(name="drops", description="Ver estado de drops")
+    async def drops_command(interaction: discord.Interaction):
+        twitch = await check_twitch()
+        kick = await check_kick()
+        msg = []
+        msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
+        msg.append("🟢 Kick" if kick else "🔴 Kick")
+        await interaction.response.send_message("\n".join(msg))
+
+    # Sincronizar globalmente
+    await self.tree.sync()
+    print("Comando /drops global sincronizado")
 
 bot = MyBot()
 
