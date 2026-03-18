@@ -42,7 +42,6 @@ def save_data(data):
     except Exception as e:
         print("Error guardando:", e)
 
-
 # =========================
 # 🌐 SESSION
 # =========================
@@ -55,7 +54,6 @@ async def get_session():
         session = aiohttp.ClientSession(timeout=timeout)
     return session
 
-
 # =========================
 # 🔎 TWITCH
 # =========================
@@ -67,17 +65,11 @@ async def check_twitch():
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
-
             html = await resp.text()
-
-            # Si NO aparece "No active drops" → hay drops
             return "No active drops" not in html
-
     except Exception as e:
         print("Error Twitch:", e)
-
     return None
-
 
 # =========================
 # 🔎 KICK
@@ -90,15 +82,11 @@ async def check_kick():
         async with session.get(url) as resp:
             if resp.status != 200:
                 return None
-
             html = await resp.text()
             return "Drops on Kick" in html
-
     except Exception as e:
         print("Error Kick:", e)
-
     return None
-
 
 # =========================
 # 🤖 BOT CLASE (CLAVE)
@@ -111,30 +99,25 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
 
-        # registrar comando
-        self.tree.add_command(drops, guild=discord.Object(id=GUILD_ID))
+        # Registrar comando slash directamente
+        @self.tree.command(
+            name="drops",
+            description="Ver estado de drops",
+            guild=guild
+        )
+        async def drops_command(interaction: discord.Interaction):
+            twitch = await check_twitch()
+            kick = await check_kick()
+            msg = []
+            msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
+            msg.append("🟢 Kick" if kick else "🔴 Kick")
+            await interaction.response.send_message("\n".join(msg))
 
+        # Sincronizar comandos en la guild
         synced = await self.tree.sync(guild=guild)
         print(f"Sync OK: {len(synced)} comandos")
 
-
 bot = MyBot()
-
-
-# =========================
-# 🔥 SLASH COMMAND
-# =========================
-@app_commands.command(name="drops", description="Ver estado de drops")
-async def drops(interaction: discord.Interaction):
-    twitch = await check_twitch()
-    kick = await check_kick()
-
-    msg = []
-    msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
-    msg.append("🟢 Kick" if kick else "🔴 Kick")
-
-    await interaction.response.send_message("\n".join(msg))
-
 
 # =========================
 # 🔁 LOOP
@@ -177,16 +160,14 @@ async def check_drops():
 
     save_data({"twitch": new_twitch, "kick": new_kick})
 
-
 # =========================
 # READY
 # =========================
 @bot.event
 async def on_ready():
     print(f"Bot listo: {bot.user}")
-    await asyncio.sleep(20)
+    await asyncio.sleep(5)
     check_drops.start()
-
 
 # =========================
 # RUN
