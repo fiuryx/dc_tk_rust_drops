@@ -10,6 +10,7 @@ import os
 # =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
+GUILD_ID = int(os.getenv("GUILD_ID"))  
 
 if not TOKEN or CHANNEL_ID == 0:
     raise ValueError("Faltan variables de entorno")
@@ -200,12 +201,20 @@ async def check_drops():
 # =========================
 # READY
 # =========================
+
 @bot.event
 async def on_ready():
     print(f"Bot listo: {bot.user}")
+
+    try:
+        guild = discord.Object(id=GUILD_ID)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"Slash commands sincronizados en guild: {len(synced)}")
+    except Exception as e:
+        print("Error sync:", e)
+
     await asyncio.sleep(20)
     check_drops.start()
-
 
 # =========================
 # COMANDO
