@@ -1,4 +1,3 @@
-discord.py
-aiohttp
+playwright
 beautifulsoup4
-lxml
+bot.py
