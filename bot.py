@@ -120,8 +120,8 @@ class MyBot(discord.Client):
             kick = await check_kick()
 
             msg = []
-            msg.append("🟢 Twitch" if twitch else "🔴 Twitch")
-            msg.append("🟢 Kick" if kick else "🔴 Kick")
+            msg.append("🟢 Twitch drops activos." if twitch else "🔴 Twitch drops inactivos")
+            msg.append("🟢 Kick drops activos" if kick else "🔴 Kick drops inactivos")
 
             await interaction.response.send_message("\n".join(msg))
 
